@@ -6,6 +6,8 @@ import { useRouter } from 'next/navigation';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import { useAuth } from '@/hooks/useAuth';
 import userService, { UserProfile, UpdateProfileData, ChangePasswordData } from '@/services/userService';
+import tokenService from '@/services/tokenService';
+import reservationService, { ReservationData } from '@/services/reservationService';
 
 function ProfilePageContent() {
   const { user: authUser, isAuthenticated, loading: authLoading } = useAuth();
@@ -56,25 +58,51 @@ function ProfilePageContent() {
     console.log('Profile page auth state:', { isAuthenticated, authLoading });
   }, [isAuthenticated, authLoading]);
   
-  // Load user profile data
+  // State for token balance and reservation history
+  const [tokenBalance, setTokenBalance] = useState(0);
+  const [recentReservations, setRecentReservations] = useState<ReservationData[]>([]);
+  const [reservationsLoading, setReservationsLoading] = useState(false);
+
+  // Load user profile data, token balance, and recent reservations
   useEffect(() => {
-    const fetchUserProfile = async () => {
+    const fetchUserData = async () => {
       if (!isAuthenticated || authLoading) return;
       
       try {
         setIsLoading(true);
-        const profile = await userService.getCurrentUserProfile();
+        
+        // Load profile data, token balance, and recent reservations in parallel
+        const [profile, tokenData, reservations] = await Promise.all([
+          userService.getCurrentUserProfile(),
+          tokenService.getUserBalance().catch((error: any) => {
+            console.error('Error fetching token balance:', error);
+            return { balance: 0 };
+          }),
+          reservationService.getUserReservations().catch((error: any) => {
+            console.error('Error fetching reservations:', error);
+            return [] as ReservationData[];
+          })
+        ]);
+        
         setInitialUserData(profile);
         setUserData(profile);
+        setTokenBalance(tokenData.balance);
+        setRecentReservations(
+          reservations.sort((a: ReservationData, b: ReservationData) => 
+            new Date(b.startTime).getTime() - new Date(a.startTime).getTime()
+          ).slice(0, 5)
+        );
+        
+        console.log('User data loaded successfully:', { profile, tokenBalance: tokenData.balance, reservationsCount: reservations.length });
       } catch (error) {
-        console.error('Error fetching user profile:', error);
+        console.error('Error fetching user data:', error);
         setMessage({ type: 'error', text: 'Failed to load profile data. Please try again.' });
       } finally {
         setIsLoading(false);
       }
     };
     
-    fetchUserProfile();
+    fetchUserData();
   }, [isAuthenticated, authLoading]);
 
   // Handle profile update
@@ -114,6 +142,18 @@ function ProfilePageContent() {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  // Format date for display
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', { 
+      year: 'numeric', 
+      month: 'short', 
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
   };
 
   // Handle password change
@@ -249,38 +289,59 @@ function ProfilePageContent() {
 
       {/* Tabs */}
       <div className="mb-6 border-b border-gray-200">
-        <nav className="-mb-px flex space-x-8">
+        <nav className="flex space-x-4">
           <button
-            onClick={() => setActiveTab("profile")}
-            className={`${
-              activeTab === "profile"
-                ? "border-blue-500 text-blue-600"
-                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-            } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
+            onClick={() => setActiveTab('profile')}
+            className={`py-4 px-6 ${
+              activeTab === 'profile'
+                ? 'border-b-2 border-blue-500 text-blue-600'
+                : 'text-gray-600 hover:text-blue-500'
+            }`}
           >
             Profile Information
           </button>
           <button
-            onClick={() => setActiveTab("password")}
-            className={`${
-              activeTab === "password"
-                ? "border-blue-500 text-blue-600"
-                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-            } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
+            onClick={() => setActiveTab('security')}
+            className={`py-4 px-6 ${
+              activeTab === 'security'
+                ? 'border-b-2 border-blue-500 text-blue-600'
+                : 'text-gray-600 hover:text-blue-500'
+            }`}
           >
-            Change Password
+            Security
           </button>
           <button
-            onClick={() => setActiveTab("preferences")}
-            className={`${
-              activeTab === "preferences"
-                ? "border-blue-500 text-blue-600"
-                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-            } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
+            onClick={() => setActiveTab('activity')}
+            className={`py-4 px-6 ${
+              activeTab === 'activity'
+                ? 'border-b-2 border-blue-500 text-blue-600'
+                : 'text-gray-600 hover:text-blue-500'
+            }`}
           >
-            Preferences
+            Activity & Reservations
           </button>
         </nav>
+      </div>
+
+      {/* Token Balance Card - Always visible at the top */}
+      <div className="mb-6 bg-white shadow overflow-hidden rounded-lg divide-y divide-gray-200">
+        <div className="px-4 py-5 sm:px-6 flex justify-between items-center">
+          <div>
+            <h3 className="text-lg leading-6 font-medium text-gray-900">Token Balance</h3>
+            <p className="mt-1 max-w-2xl text-sm text-gray-500">Your current token balance for court reservations and services.</p>
+          </div>
+          <div className="text-right">
+            <span className="text-3xl font-bold text-blue-600">{tokenBalance}</span>
+            <p className="text-sm text-gray-500">Available Tokens</p>
+          </div>
+        </div>
+        <div className="px-4 py-4 sm:px-6 bg-gray-50">
+          <div className="flex justify-end">
+            <Link href="/dashboard/tokens/purchase" className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+              Purchase Tokens
+            </Link>
+          </div>
+        </div>
       </div>
 
       {/* Profile Information Tab */}
@@ -553,30 +614,197 @@ function ProfilePageContent() {
                     {userData.playingLevel}
                   </p>
                 </div>
+              </div>
+            )}
+            
+            <div className="mt-6 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setEditMode(true)}
+                className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                Edit Profile
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
-                <div className="mt-10 pt-6 border-t border-gray-200">
-                  <h3 className="text-sm font-medium text-red-600 mb-3">
-                    Danger Zone
-                  </h3>
-                  <p className="text-sm text-gray-500 mb-4">
-                    Once you delete your account, all of your data will be
-                    permanently removed. This action cannot be undone.
-                  </p>
+      {/* Security Tab */}
+      {activeTab === "security" && (
+        <div className="bg-white shadow overflow-hidden rounded-lg">
+          <div className="px-4 py-5 sm:px-6">
+            <h3 className="text-lg leading-6 font-medium text-gray-900">
+              Security Settings
+            </h3>
+            <p className="mt-1 max-w-2xl text-sm text-gray-500">
+              Manage your password and account security.
+            </p>
+          </div>
+
+          <div className="border-t border-gray-200 px-4 py-5 sm:p-0">
+            <form onSubmit={handlePasswordChange} className="space-y-6 px-4 py-5">
+              <div>
+                <label
+                  htmlFor="currentPassword"
+                  className="block text-sm font-medium text-gray-700"
+                >
+                  Current Password
+                </label>
+                <div className="mt-1">
+                  <input
+                    id="currentPassword"
+                    name="currentPassword"
+                    type="password"
+                    autoComplete="current-password"
+                    required
+                    value={passwordForm.currentPassword}
+                    onChange={handlePasswordInputChange}
+                    className="shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 rounded-md"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="newPassword"
+                  className="block text-sm font-medium text-gray-700"
+                >
+                  New Password
+                </label>
+                <div className="mt-1">
+                  <input
+                    id="newPassword"
+                    name="newPassword"
+                    type="password"
+                    autoComplete="new-password"
+                    required
+                    value={passwordForm.newPassword}
+                    onChange={handlePasswordInputChange}
+                    className="shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 rounded-md"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="confirmPassword"
+                  className="block text-sm font-medium text-gray-700"
+                >
+                  Confirm New Password
+                </label>
+                <div className="mt-1">
+                  <input
+                    id="confirmPassword"
+                    name="confirmPassword"
+                    type="password"
+                    autoComplete="new-password"
+                    required
+                    value={passwordForm.confirmPassword}
+                    onChange={handlePasswordInputChange}
+                    className="shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 rounded-md"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-5">
+                <div className="flex justify-end">
                   <button
-                    type="button"
-                    onClick={() =>
-                      setMessage({
-                        type: "error",
-                        text: "Account deletion is not available in this demo.",
-                      })
-                    }
-                    className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="ml-3 inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-75"
                   >
-                    Delete Account
+                    {isSubmitting ? "Updating..." : "Change Password"}
                   </button>
                 </div>
               </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Activity & Reservations Tab */}
+      {activeTab === "activity" && (
+        <div className="bg-white shadow overflow-hidden rounded-lg">
+          <div className="px-4 py-5 sm:px-6">
+            <h3 className="text-lg leading-6 font-medium text-gray-900">
+              Recent Reservations
+            </h3>
+            <p className="mt-1 max-w-2xl text-sm text-gray-500">
+              Your recent court bookings and upcoming reservations.
+            </p>
+          </div>
+
+          <div className="border-t border-gray-200">
+            {recentReservations.length > 0 ? (
+              <ul className="divide-y divide-gray-200">
+                {recentReservations.map((reservation) => (
+                  <li key={reservation.id} className="px-4 py-4 sm:px-6">
+                    <div className="flex items-center justify-between">
+                      <div className="flex flex-col">
+                        <p className="text-sm font-medium text-blue-600 truncate">
+                          {reservation.courtName || `Court #${reservation.courtId}`}
+                        </p>
+                        <p className="flex items-center text-sm text-gray-500">
+                          <span>{reservation.facilityName || 'Unknown Facility'}</span>
+                        </p>
+                      </div>
+                      <div className="ml-2 flex-shrink-0 flex">
+                        <p className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
+                          ${reservation.status === 'CONFIRMED' ? 'bg-green-100 text-green-800' : 
+                            reservation.status === 'PENDING' ? 'bg-yellow-100 text-yellow-800' : 
+                            reservation.status === 'CANCELLED' ? 'bg-red-100 text-red-800' : 
+                            'bg-gray-100 text-gray-800'}`}>
+                          {reservation.status}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-2 sm:flex sm:justify-between">
+                      <div className="sm:flex">
+                        <p className="flex items-center text-sm text-gray-500">
+                          <svg className="flex-shrink-0 mr-1.5 h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                            <path fillRule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clipRule="evenodd" />
+                          </svg>
+                          <span>
+                            {formatDate(reservation.startTime)} - {new Date(reservation.endTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </p>
+                      </div>
+                      <div className="mt-2 flex items-center text-sm text-gray-500 sm:mt-0">
+                        <Link href={`/dashboard/reservations/${reservation.id}`} className="text-blue-600 hover:text-blue-900">
+                          View Details
+                        </Link>
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="text-center py-6">
+                <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                <h3 className="mt-2 text-sm font-medium text-gray-900">No reservations</h3>
+                <p className="mt-1 text-sm text-gray-500">You haven't made any court reservations yet.</p>
+                <div className="mt-6">
+                  <Link href="/dashboard/reservations/new" className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                    <svg className="-ml-1 mr-2 h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                      <path fillRule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clipRule="evenodd" />
+                    </svg>
+                    Book a Court
+                  </Link>
+                </div>
+              </div>
             )}
+          </div>
+          
+          <div className="border-t border-gray-200 px-4 py-4 sm:px-6 bg-gray-50">
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-gray-500">Showing your {recentReservations.length} most recent reservations</span>
+              <Link href="/dashboard/reservations" className="text-sm font-medium text-blue-600 hover:text-blue-500">
+                View All Reservations
+              </Link>
+            </div>
           </div>
         </div>
       )}
