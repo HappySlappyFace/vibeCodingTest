@@ -2,13 +2,18 @@ package com.superaipadel.backend.controller;
 
 import com.superaipadel.backend.dto.request.LoginRequest;
 import com.superaipadel.backend.dto.request.SignupRequest;
+import com.superaipadel.backend.dto.request.TokenRefreshRequest;
 import com.superaipadel.backend.dto.response.JwtResponse;
 import com.superaipadel.backend.dto.response.MessageResponse;
+import com.superaipadel.backend.dto.response.TokenRefreshResponse;
+import com.superaipadel.backend.exception.TokenRefreshException;
+import com.superaipadel.backend.model.RefreshToken;
 import com.superaipadel.backend.model.Role;
 import com.superaipadel.backend.model.User;
 import com.superaipadel.backend.repository.RoleRepository;
 import com.superaipadel.backend.repository.UserRepository;
 import com.superaipadel.backend.security.jwt.JwtUtils;
+import com.superaipadel.backend.security.services.RefreshTokenService;
 import com.superaipadel.backend.security.services.UserDetailsImpl;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -44,6 +49,9 @@ public class AuthController {
     @Autowired
     JwtUtils jwtUtils;
 
+    @Autowired
+    RefreshTokenService refreshTokenService;
+
     @PostMapping("/signin")
     public ResponseEntity<?> authenticateUser(@Valid @RequestBody LoginRequest loginRequest) {
 
@@ -53,12 +61,16 @@ public class AuthController {
         SecurityContextHolder.getContext().setAuthentication(authentication);
         String jwt = jwtUtils.generateJwtToken(authentication);
         
+        // Generate refresh token
         UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
+        RefreshToken refreshToken = refreshTokenService.createRefreshToken(userDetails.getId());
+        
         List<String> roles = userDetails.getAuthorities().stream()
                 .map(item -> item.getAuthority())
                 .collect(Collectors.toList());
 
         return ResponseEntity.ok(new JwtResponse(jwt,
+                                                 refreshToken.getToken(),
                                                  userDetails.getId(),
                                                  userDetails.getUsername(),
                                                  userDetails.getEmail(),
@@ -67,6 +79,21 @@ public class AuthController {
                                                  userDetails.getPhoneNumber(),
                                                  userDetails.getProfilePictureUrl(),
                                                  roles));
+    }
+
+    @PostMapping("/refresh-token")
+    public ResponseEntity<?> refreshToken(@Valid @RequestBody TokenRefreshRequest request) {
+        String requestRefreshToken = request.getRefreshToken();
+
+        return refreshTokenService.findByToken(requestRefreshToken)
+                .map(refreshTokenService::verifyExpiration)
+                .map(RefreshToken::getUser)
+                .map(user -> {
+                    String token = jwtUtils.generateTokenFromUsername(user.getUsername());
+                    return ResponseEntity.ok(new TokenRefreshResponse(token, requestRefreshToken));
+                })
+                .orElseThrow(() -> new TokenRefreshException(requestRefreshToken,
+                        "Refresh token is not in database!"));
     }
 
     @PostMapping("/signup")
