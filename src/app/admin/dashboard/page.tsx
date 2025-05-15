@@ -2,8 +2,9 @@
 
 import React from 'react';
 import Link from 'next/link';
+import AdminRoute from '@/components/auth/AdminRoute';
 
-export default function AdminDashboard() {
+function AdminDashboardContent() {
   // Mock data - in a real app, this would come from an API call
   const facility = {
     id: 1,
@@ -323,5 +324,13 @@ export default function AdminDashboard() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function AdminDashboard() {
+  return (
+    <AdminRoute>
+      <AdminDashboardContent />
+    </AdminRoute>
   );
 }

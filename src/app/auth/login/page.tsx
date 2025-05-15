@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useState, ChangeEvent, FormEvent, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import authService from '@/services/authService';
+import { useAuth } from '@/hooks/useAuth';
 
 interface LoginFormData {
   username: string;
@@ -19,6 +19,7 @@ interface FormErrors {
 export default function LoginPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { login, isAuthenticated, userRoles, loading } = useAuth();
   const [formData, setFormData] = useState<LoginFormData>({
     username: '',
     password: '',
@@ -29,12 +30,37 @@ export default function LoginPage() {
   const [formError, setFormError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   
-  // Check if user has just registered successfully
+  // Handle registration success message and redirects
   useEffect(() => {
+    // Show registration success message if applicable
     if (searchParams?.get('registered') === 'true') {
       setSuccessMessage('Registration successful! Please log in with your credentials.');
     }
-  }, [searchParams]);
+    
+    console.log('Login page auth state:', { isAuthenticated, loading });
+    
+    // Only proceed with redirect logic if authentication is complete and user is authenticated
+    if (isAuthenticated && !loading) {
+      // Get the callback URL from query params or use role-based default
+      const callbackUrl = searchParams?.get('callbackUrl');
+      console.log('Login redirect - callback URL:', callbackUrl);
+      
+      // Determine where to redirect based on user role
+      let redirectPath = '/dashboard'; // Default path
+      
+      if (userRoles.includes('ROLE_SUPER_ADMIN')) {
+        redirectPath = '/super-admin/dashboard';
+      } else if (userRoles.includes('ROLE_ADMIN')) {
+        redirectPath = '/admin/dashboard';
+      } else if (callbackUrl && callbackUrl !== '/auth/login') {
+        // Only use callback if it's not the login page (avoid loops)
+        redirectPath = callbackUrl;
+      }
+      
+      console.log('Redirecting to:', redirectPath);
+      router.push(redirectPath);
+    }
+  }, [searchParams, isAuthenticated, loading, userRoles, router]);
 
   const handleInputChange = (e: ChangeEvent<HTMLInputElement>) => {
     const { name, value, type, checked } = e.target;
@@ -91,14 +117,11 @@ export default function LoginPage() {
     setIsLoading(true);
 
     try {
-      // Call the authentication service to sign in
-      const response = await authService.login({
-        username: formData.username,
-        password: formData.password
-      });
+      // Call the login method from useAuth hook
+      const response = await login(formData.username, formData.password);
       
-      // If we have a successful response with roles
-      if (response && response.roles) {
+      // If we have a successful response
+      if (response) {
         // Save remember me preference
         if (formData.rememberMe) {
           localStorage.setItem('rememberMe', 'true');
@@ -106,14 +129,7 @@ export default function LoginPage() {
           localStorage.removeItem('rememberMe');
         }
         
-        // Redirect based on role
-        if (response.roles.includes('ROLE_SUPER_ADMIN')) {
-          router.push('/super-admin/dashboard');
-        } else if (response.roles.includes('ROLE_ADMIN')) {
-          router.push('/admin/dashboard');
-        } else {
-          router.push('/dashboard');
-        }
+        // Redirect will be handled by the useEffect hook that watches isAuthenticated
       }
     } catch (error: any) {
       console.error('Login error:', error);

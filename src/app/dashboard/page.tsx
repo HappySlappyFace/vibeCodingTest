@@ -1,7 +1,10 @@
+'use client';
+
 import React from 'react';
 import Link from 'next/link';
+import ProtectedRoute from '@/components/auth/ProtectedRoute';
 
-export default function Dashboard() {
+function DashboardContent() {
   // In a real implementation, we would fetch this data from the backend
   const upcomingReservations = [
     { id: 1, facility: 'Padel Club Tunis', court: 'Court 1', date: 'May 15, 2025', time: '18:00 - 19:00', status: 'confirmed' },
@@ -249,5 +252,13 @@ export default function Dashboard() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function Dashboard() {
+  return (
+    <ProtectedRoute>
+      <DashboardContent />
+    </ProtectedRoute>
   );
 }

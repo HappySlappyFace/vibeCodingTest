@@ -1,9 +1,10 @@
 "use client";
 
 import Link from 'next/link';
-import { useState, ChangeEvent, FormEvent } from 'react';
+import { useState, ChangeEvent, FormEvent, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import authService, { RegisterData } from '@/services/authService';
+import { useAuth } from '@/hooks/useAuth';
+import { RegisterData } from '@/services/authService';
 
 interface FormData {
   firstName: string;
@@ -23,6 +24,7 @@ interface FormErrors {
 
 export default function RegisterPage() {
   const router = useRouter();
+  const { isAuthenticated, loading } = useAuth();
   const [formData, setFormData] = useState<FormData>({
     firstName: '',
     lastName: '',
@@ -36,6 +38,13 @@ export default function RegisterPage() {
   const [errors, setErrors] = useState<FormErrors>({});
   const [isLoading, setIsLoading] = useState(false);
   const [formError, setFormError] = useState('');
+  
+  // Redirect if already authenticated
+  useEffect(() => {
+    if (isAuthenticated && !loading) {
+      router.push('/dashboard');
+    }
+  }, [isAuthenticated, loading, router]);
 
   const handleInputChange = (e: ChangeEvent<HTMLInputElement>) => {
     const { name, value, type, checked } = e.target;
@@ -118,6 +127,8 @@ export default function RegisterPage() {
         phoneNumber: formData.phoneNumber || ''
       };
       
+      // Import authService for registration since we don't have register in useAuth
+      const authService = await import('@/services/authService').then(mod => mod.default);
       // Call the registration API
       await authService.register(registerData);
       

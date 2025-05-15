@@ -1,17 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
-
-// This will be replaced with actual auth logic
-const useAuth = () => {
-  // Mock implementation
-  return { isAuthenticated: false, user: null, userRole: null };
-};
+import { useState, useEffect } from "react";
+import { useAuth } from "@/hooks/useAuth";
+import { useRouter } from "next/navigation";
 
 export default function Navbar() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const { isAuthenticated, user, userRole } = useAuth();
+  const { isAuthenticated, user, userRoles, logout, loading } = useAuth();
+  const router = useRouter();
+  
+  // Determine if user has admin privileges
+  const isAdmin = userRoles?.some(role => ['ROLE_ADMIN', 'ROLE_SUPER_ADMIN'].includes(role));
+  const isSuperAdmin = userRoles?.some(role => role === 'ROLE_SUPER_ADMIN');
 
   return (
     <nav className="bg-blue-600 shadow-lg">
@@ -51,7 +52,13 @@ export default function Navbar() {
             </div>
           </div>
           <div className="hidden sm:ml-6 sm:flex sm:items-center">
-            {isAuthenticated ? (
+            {loading ? (
+              <div className="flex items-center space-x-4">
+                <div className="text-white px-3 py-2 rounded-md text-sm font-medium opacity-75">
+                  Loading...
+                </div>
+              </div>
+            ) : isAuthenticated ? (
               <div className="flex items-center space-x-4">
                 <Link
                   href="/dashboard"
@@ -59,7 +66,26 @@ export default function Navbar() {
                 >
                   Dashboard
                 </Link>
-                <button className="bg-white text-blue-600 hover:bg-blue-50 px-4 py-2 rounded-md text-sm font-medium">
+                {isAdmin && (
+                  <Link
+                    href="/admin"
+                    className="text-white hover:text-blue-200 px-3 py-2 rounded-md text-sm font-medium"
+                  >
+                    Admin
+                  </Link>
+                )}
+                {isSuperAdmin && (
+                  <Link
+                    href="/super-admin"
+                    className="text-white hover:text-blue-200 px-3 py-2 rounded-md text-sm font-medium"
+                  >
+                    Super Admin
+                  </Link>
+                )}
+                <button 
+                  onClick={logout}
+                  className="bg-white text-blue-600 hover:bg-blue-50 px-4 py-2 rounded-md text-sm font-medium"
+                >
                   Logout
                 </button>
               </div>
@@ -152,7 +178,11 @@ export default function Navbar() {
             Contact
           </Link>
 
-          {isAuthenticated ? (
+          {loading ? (
+            <div className="text-white px-3 py-2 rounded-md text-base font-medium opacity-75">
+              Loading...
+            </div>
+          ) : isAuthenticated ? (
             <>
               <Link
                 href="/dashboard"
@@ -160,7 +190,26 @@ export default function Navbar() {
               >
                 Dashboard
               </Link>
-              <button className="w-full text-left text-white hover:text-blue-200 block px-3 py-2 rounded-md text-base font-medium">
+              {isAdmin && (
+                <Link
+                  href="/admin"
+                  className="text-white hover:text-blue-200 block px-3 py-2 rounded-md text-base font-medium"
+                >
+                  Admin
+                </Link>
+              )}
+              {isSuperAdmin && (
+                <Link
+                  href="/super-admin"
+                  className="text-white hover:text-blue-200 block px-3 py-2 rounded-md text-base font-medium"
+                >
+                  Super Admin
+                </Link>
+              )}
+              <button 
+                onClick={logout}
+                className="w-full text-left text-white hover:text-blue-200 block px-3 py-2 rounded-md text-base font-medium"
+              >
                 Logout
               </button>
             </>
