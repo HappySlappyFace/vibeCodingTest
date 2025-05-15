@@ -1,6 +1,133 @@
+"use client";
+
 import Link from 'next/link';
+import { useState, ChangeEvent, FormEvent, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import authService from '@/services/authService';
+
+interface LoginFormData {
+  username: string;
+  password: string;
+  rememberMe: boolean;
+  [key: string]: string | boolean;
+}
+
+interface FormErrors {
+  [key: string]: string;
+}
 
 export default function LoginPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [formData, setFormData] = useState<LoginFormData>({
+    username: '',
+    password: '',
+    rememberMe: false
+  });
+  const [errors, setErrors] = useState<FormErrors>({});
+  const [isLoading, setIsLoading] = useState(false);
+  const [formError, setFormError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
+  
+  // Check if user has just registered successfully
+  useEffect(() => {
+    if (searchParams?.get('registered') === 'true') {
+      setSuccessMessage('Registration successful! Please log in with your credentials.');
+    }
+  }, [searchParams]);
+
+  const handleInputChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const { name, value, type, checked } = e.target;
+    const fieldName = name as keyof LoginFormData;
+    
+    setFormData({
+      ...formData,
+      [fieldName]: type === 'checkbox' ? checked : value,
+    });
+    
+    // Clear field-specific error when user starts typing
+    if (errors[fieldName]) {
+      setErrors({
+        ...errors,
+        [fieldName]: ''
+      });
+    }
+    
+    // Clear form error when user starts typing
+    if (formError) {
+      setFormError('');
+    }
+  };
+
+  const validateForm = (): boolean => {
+    const newErrors: FormErrors = {};
+    let isValid = true;
+
+    // Required field validation
+    if (!formData.username) {
+      newErrors.username = 'Username is required';
+      isValid = false;
+    }
+
+    if (!formData.password) {
+      newErrors.password = 'Password is required';
+      isValid = false;
+    }
+
+    setErrors(newErrors);
+    return isValid;
+  };
+
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setFormError('');
+    setSuccessMessage('');
+    
+    // Validate the form
+    if (!validateForm()) {
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      // Call the authentication service to sign in
+      const response = await authService.login({
+        username: formData.username,
+        password: formData.password
+      });
+      
+      // If we have a successful response with roles
+      if (response && response.roles) {
+        // Save remember me preference
+        if (formData.rememberMe) {
+          localStorage.setItem('rememberMe', 'true');
+        } else {
+          localStorage.removeItem('rememberMe');
+        }
+        
+        // Redirect based on role
+        if (response.roles.includes('ROLE_SUPER_ADMIN')) {
+          router.push('/super-admin/dashboard');
+        } else if (response.roles.includes('ROLE_ADMIN')) {
+          router.push('/admin/dashboard');
+        } else {
+          router.push('/dashboard');
+        }
+      }
+    } catch (error: any) {
+      console.error('Login error:', error);
+      
+      // Handle specific API errors
+      if (error.response && error.response.data) {
+        setFormError(error.response.data.message || 'Invalid username or password');
+      } else {
+        setFormError('Failed to connect to authentication server. Please try again later.');
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
   return (
     <div className="bg-gray-50 min-h-screen py-12">
       <div className="container mx-auto px-4 sm:px-6 lg:px-8">
@@ -11,19 +138,52 @@ export default function LoginPage() {
               <p className="mt-2 text-gray-600">Sign in to your SuperAiPadel account</p>
             </div>
             
-            <form className="space-y-6">
+            {successMessage && (
+              <div className="mb-4 rounded-md bg-green-50 p-4">
+                <div className="flex">
+                  <div className="flex-shrink-0">
+                    <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+                  <div className="ml-3">
+                    <p className="text-sm font-medium text-green-800">{successMessage}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            {formError && (
+              <div className="mb-4 rounded-md bg-red-50 p-4">
+                <div className="flex">
+                  <div className="flex-shrink-0">
+                    <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+                  <div className="ml-3">
+                    <p className="text-sm font-medium text-red-800">{formError}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            <form className="space-y-6" onSubmit={handleSubmit}>
               <div>
-                <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-                  Email Address
+                <label htmlFor="username" className="block text-sm font-medium text-gray-700">
+                  Username
                 </label>
                 <input
-                  id="email"
-                  name="email"
-                  type="email"
-                  autoComplete="email"
+                  id="username"
+                  name="username"
+                  type="text"
+                  autoComplete="username"
+                  value={formData.username}
+                  onChange={handleInputChange}
                   required
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  className={`mt-1 block w-full px-3 py-2 border ${errors.username ? 'border-red-300' : 'border-gray-300'} rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500`}
                 />
+                {errors.username && <p className="mt-1 text-xs text-red-600">{errors.username}</p>}
               </div>
 
               <div>
@@ -35,20 +195,25 @@ export default function LoginPage() {
                   name="password"
                   type="password"
                   autoComplete="current-password"
+                  value={formData.password}
+                  onChange={handleInputChange}
                   required
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  className={`mt-1 block w-full px-3 py-2 border ${errors.password ? 'border-red-300' : 'border-gray-300'} rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500`}
                 />
+                {errors.password && <p className="mt-1 text-xs text-red-600">{errors.password}</p>}
               </div>
 
               <div className="flex items-center justify-between">
                 <div className="flex items-center">
                   <input
-                    id="remember-me"
-                    name="remember-me"
+                    id="rememberMe"
+                    name="rememberMe"
                     type="checkbox"
+                    checked={formData.rememberMe}
+                    onChange={handleInputChange}
                     className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                   />
-                  <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-700">
+                  <label htmlFor="rememberMe" className="ml-2 block text-sm text-gray-700">
                     Remember me
                   </label>
                 </div>
@@ -63,9 +228,10 @@ export default function LoginPage() {
               <div>
                 <button
                   type="submit"
-                  className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  disabled={isLoading}
+                  className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-75"
                 >
-                  Sign in
+                  {isLoading ? 'Signing in...' : 'Sign in'}
                 </button>
               </div>
             </form>
@@ -83,6 +249,8 @@ export default function LoginPage() {
               <div className="mt-6 grid grid-cols-2 gap-3">
                 <div>
                   <button
+                    type="button"
+                    onClick={() => setFormError('Social login is not available in this demo')}
                     className="w-full inline-flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
                   >
                     <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -96,6 +264,8 @@ export default function LoginPage() {
 
                 <div>
                   <button
+                    type="button"
+                    onClick={() => setFormError('Social login is not available in this demo')}
                     className="w-full inline-flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
                   >
                     <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">

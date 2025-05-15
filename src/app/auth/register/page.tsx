@@ -1,6 +1,142 @@
+"use client";
+
 import Link from 'next/link';
+import { useState, ChangeEvent, FormEvent } from 'react';
+import { useRouter } from 'next/navigation';
+import authService, { RegisterData } from '@/services/authService';
+
+interface FormData {
+  firstName: string;
+  lastName: string;
+  username: string;
+  email: string;
+  phoneNumber: string;
+  password: string;
+  confirmPassword: string;
+  terms: boolean;
+  [key: string]: string | boolean;
+};
+
+interface FormErrors {
+  [key: string]: string;
+};
 
 export default function RegisterPage() {
+  const router = useRouter();
+  const [formData, setFormData] = useState<FormData>({
+    firstName: '',
+    lastName: '',
+    username: '',
+    email: '',
+    phoneNumber: '',
+    password: '',
+    confirmPassword: '',
+    terms: false
+  });
+  const [errors, setErrors] = useState<FormErrors>({});
+  const [isLoading, setIsLoading] = useState(false);
+  const [formError, setFormError] = useState('');
+
+  const handleInputChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const { name, value, type, checked } = e.target;
+    const fieldName = name as keyof FormData;
+    
+    setFormData({
+      ...formData,
+      [fieldName]: type === 'checkbox' ? checked : value,
+    });
+    
+    // Clear field-specific error when user starts typing
+    if (errors[fieldName]) {
+      setErrors({
+        ...errors,
+        [fieldName]: ''
+      });
+    }
+  };
+
+  const validateForm = () => {
+    const newErrors: FormErrors = {};
+    let isValid = true;
+
+    // Required field validation
+    (Object.keys(formData) as Array<keyof FormData>).forEach(key => {
+      if (key !== 'phoneNumber' && !formData[key]) {
+        const keyStr = String(key);
+        newErrors[key] = `${keyStr.charAt(0).toUpperCase() + keyStr.slice(1).replace(/([A-Z])/g, ' $1')} is required`;
+        isValid = false;
+      }
+    });
+
+    // Email validation
+    if (formData.email && !/\S+@\S+\.\S+/.test(formData.email)) {
+      newErrors.email = 'Email address is invalid';
+      isValid = false;
+    }
+
+    // Password validation
+    if (formData.password && formData.password.length < 6) {
+      newErrors.password = 'Password must be at least 6 characters';
+      isValid = false;
+    }
+
+    // Confirm password validation
+    if (formData.confirmPassword && formData.password !== formData.confirmPassword) {
+      newErrors.confirmPassword = 'Passwords do not match';
+      isValid = false;
+    }
+
+    // Terms acceptance
+    if (!formData.terms) {
+      newErrors.terms = 'You must accept the terms and conditions';
+      isValid = false;
+    }
+
+    setErrors(newErrors);
+    return isValid;
+  };
+
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setFormError('');
+    
+    // Validate the form
+    if (!validateForm()) {
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      // Prepare registration data for the API
+      const registerData: RegisterData = {
+        username: formData.username,
+        email: formData.email,
+        password: formData.password,
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        phoneNumber: formData.phoneNumber || ''
+      };
+      
+      // Call the registration API
+      await authService.register(registerData);
+      
+      // Registration successful - redirect to login page
+      router.push('/auth/login?registered=true');
+    } catch (error: any) {
+      console.error('Registration error:', error);
+      
+      // Handle specific API errors
+      if (error.response && error.response.data) {
+        setFormError(error.response.data.message || 'Registration failed. Please try again.');
+      } else {
+        setFormError('Failed to connect to registration server. Please try again later.');
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
   return (
     <div className="bg-gray-50 min-h-screen py-12">
       <div className="container mx-auto px-4 sm:px-6 lg:px-8">
@@ -11,7 +147,7 @@ export default function RegisterPage() {
               <p className="mt-2 text-gray-600">Join SuperAiPadel to book courts and more</p>
             </div>
             
-            <form className="space-y-6">
+            <form className="space-y-6" onSubmit={handleSubmit}>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label htmlFor="firstName" className="block text-sm font-medium text-gray-700">
@@ -22,9 +158,12 @@ export default function RegisterPage() {
                     name="firstName"
                     type="text"
                     autoComplete="given-name"
+                    value={formData.firstName}
+                    onChange={handleInputChange}
                     required
-                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                    className={`mt-1 block w-full px-3 py-2 border ${errors.firstName ? 'border-red-300' : 'border-gray-300'} rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500`}
                   />
+                  {errors.firstName && <p className="mt-1 text-xs text-red-600">{errors.firstName}</p>}
                 </div>
                 <div>
                   <label htmlFor="lastName" className="block text-sm font-medium text-gray-700">
@@ -35,9 +174,12 @@ export default function RegisterPage() {
                     name="lastName"
                     type="text"
                     autoComplete="family-name"
+                    value={formData.lastName}
+                    onChange={handleInputChange}
                     required
-                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                    className={`mt-1 block w-full px-3 py-2 border ${errors.lastName ? 'border-red-300' : 'border-gray-300'} rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500`}
                   />
+                  {errors.lastName && <p className="mt-1 text-xs text-red-600">{errors.lastName}</p>}
                 </div>
               </div>
 
@@ -50,9 +192,12 @@ export default function RegisterPage() {
                   name="username"
                   type="text"
                   autoComplete="username"
+                  value={formData.username}
+                  onChange={handleInputChange}
                   required
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  className={`mt-1 block w-full px-3 py-2 border ${errors.username ? 'border-red-300' : 'border-gray-300'} rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500`}
                 />
+                {errors.username && <p className="mt-1 text-xs text-red-600">{errors.username}</p>}
               </div>
               
               <div>
@@ -64,9 +209,12 @@ export default function RegisterPage() {
                   name="email"
                   type="email"
                   autoComplete="email"
+                  value={formData.email}
+                  onChange={handleInputChange}
                   required
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  className={`mt-1 block w-full px-3 py-2 border ${errors.email ? 'border-red-300' : 'border-gray-300'} rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500`}
                 />
+                {errors.email && <p className="mt-1 text-xs text-red-600">{errors.email}</p>}
               </div>
 
               <div>
@@ -78,8 +226,11 @@ export default function RegisterPage() {
                   name="phoneNumber"
                   type="tel"
                   autoComplete="tel"
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  value={formData.phoneNumber}
+                  onChange={handleInputChange}
+                  className={`mt-1 block w-full px-3 py-2 border ${errors.phoneNumber ? 'border-red-300' : 'border-gray-300'} rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500`}
                 />
+                {errors.phoneNumber && <p className="mt-1 text-xs text-red-600">{errors.phoneNumber}</p>}
               </div>
 
               <div>
@@ -91,9 +242,12 @@ export default function RegisterPage() {
                   name="password"
                   type="password"
                   autoComplete="new-password"
+                  value={formData.password}
+                  onChange={handleInputChange}
                   required
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  className={`mt-1 block w-full px-3 py-2 border ${errors.password ? 'border-red-300' : 'border-gray-300'} rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500`}
                 />
+                {errors.password && <p className="mt-1 text-xs text-red-600">{errors.password}</p>}
                 <p className="mt-1 text-xs text-gray-500">Must be at least 6 characters long</p>
               </div>
 
@@ -106,9 +260,12 @@ export default function RegisterPage() {
                   name="confirmPassword"
                   type="password"
                   autoComplete="new-password"
+                  value={formData.confirmPassword}
+                  onChange={handleInputChange}
                   required
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  className={`mt-1 block w-full px-3 py-2 border ${errors.confirmPassword ? 'border-red-300' : 'border-gray-300'} rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500`}
                 />
+                {errors.confirmPassword && <p className="mt-1 text-xs text-red-600">{errors.confirmPassword}</p>}
               </div>
 
               <div className="flex items-center">
@@ -116,9 +273,12 @@ export default function RegisterPage() {
                   id="terms"
                   name="terms"
                   type="checkbox"
+                  checked={formData.terms}
+                  onChange={handleInputChange}
                   required
                   className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                 />
+                {errors.terms && <p className="mt-1 text-xs text-red-600">{errors.terms}</p>}
                 <label htmlFor="terms" className="ml-2 block text-sm text-gray-700">
                   I agree to the{' '}
                   <Link href="/terms" className="font-medium text-blue-600 hover:text-blue-500">
@@ -131,12 +291,28 @@ export default function RegisterPage() {
                 </label>
               </div>
 
+              {formError && (
+                <div className="rounded-md bg-red-50 p-4 mb-4">
+                  <div className="flex">
+                    <div className="flex-shrink-0">
+                      <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                    <div className="ml-3">
+                      <p className="text-sm font-medium text-red-800">{formError}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div>
                 <button
                   type="submit"
-                  className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  disabled={isLoading}
+                  className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-75"
                 >
-                  Create Account
+                  {isLoading ? 'Creating Account...' : 'Create Account'}
                 </button>
               </div>
             </form>
